@@ -36,7 +36,7 @@ Different procfiles can be specified using the `-f` flag:
 You can run arbitrarily many processes of each type using the `-m`
 flag:
 
-    $ raco chief start -m web=1 redis=3
+    $ raco chief start -m web=1 -m redis=3
 
 ## Differences from `foreman`
 
