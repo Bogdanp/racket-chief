@@ -11,7 +11,7 @@ You can install `chief` from the package server by running:
 
 ## Usage
 
-Create a procfile:
+Create a `Procfile`:
 
 ```procfile
 assets: npm start
