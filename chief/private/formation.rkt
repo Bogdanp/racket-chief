@@ -1,4 +1,4 @@
-#lang at-exp racket/base
+#lang racket/base
 
 (require gregor
          racket/format
@@ -15,6 +15,8 @@
                          #:defs defs
                          #:procs procs
                          #:formation [formation (hash)])
+
+  (file-stream-buffer-mode (current-output-port) 'line)
 
   (define ch (make-channel))
   (define custodian (make-custodian))
@@ -39,14 +41,17 @@
   (define running-processes
     (apply mutable-set (hash-keys subprocesses)))
 
-  (define longest-id
-    (apply max (map string-length (hash-keys subprocesses))))
+  (define topic-width
+    ;; 2 characters for the :s, 6 for the time digits and one space
+    (+ 9 (apply max (map string-length (list* "system" (hash-keys subprocesses))))))
 
-  (define (log id ts message)
+  (define (~topic . args)
+    (apply ~a args #:min-width topic-width))
+
+  (define (log message [id 'system] [ts (now)])
     (colorize
      (make-process-color id)
-     (display (~a (~t ts "HH:mm:ss") " " id
-                  #:min-width (+ longest-id 9)))
+     (display (~topic (~t ts "HH:mm:ss") " " id))
      (display " | "))
     (displayln message))
 
@@ -56,34 +61,38 @@
     (for ([p (in-hash-values subprocesses)])
       (p signal)))
 
-  (define logger
-    (thread
-     (lambda _
-       (file-stream-buffer-mode (current-output-port) 'line)
+  (define (event-loop)
+    (match (sync/enable-break ch)
+      [(list 'exit id ts code)
+       (log (format "process exited with code ~a" (~c code)) id ts)
+       (set-remove! running-processes id)
 
-       (let loop ()
-         (match (sync ch)
-           [(list 'exit id ts code)
-            (log id ts @~a{process exited with code @(~c code)})
-            (set-remove! running-processes id)
-            (unless stopping?
-              (stop-all))]
+       (unless stopping?
+         (log (format "stopping all processes because '~a' died" id))
+         (stop-all))]
 
-           [(list (or 'stdout 'stderr) id ts message)
-            (log id ts message)])
+      [(list 'message id ts message)
+       (log message id ts)])
 
-         (unless (set-empty? running-processes)
-           (loop))))))
+    (unless (set-empty? running-processes)
+      (event-loop)))
 
   (let loop ()
     (with-handlers ([exn:break?
                      (lambda _
-                       (stop-all (if stopping?
-                                     'kill
-                                     'interrupt))
+                       (define signal
+                         (cond
+                           [stopping?
+                            (begin0 'kill
+                              (log "killing all processes"))]
+
+                           [else
+                            (begin0 'interrupt
+                              (log "stopping all processes"))]))
+
+                       (stop-all signal)
                        (loop))])
-      (sync/enable-break logger)
-      (custodian-shutdown-all custodian))))
+      (event-loop))))
 
 (define (start-subprocess ch id command)
   (match-define (list stdout stdin pid stderr control)
@@ -96,18 +105,13 @@
    (lambda _
      (dynamic-wind
        (lambda _
-         (emit 'stdout @~a{process started with pid @pid}))
+         (emit 'message (format "process started with pid ~a" pid)))
        (lambda _
          (let loop ()
-           (define ((handle-output event) in)
-             (define line (read-line in))
-             (unless (eof-object? line)
-               (emit event line)
-               (loop)))
-
-           (sync
-            (handle-evt stdout (handle-output 'stdout))
-            (handle-evt stderr (handle-output 'stderr)))))
+           (define line (read-line (sync (choice-evt stdout stderr))))
+           (unless (eof-object? line)
+             (emit 'message line)
+             (loop))))
        (lambda _
          (emit 'exit (control 'exit-code))))))
 
@@ -120,8 +124,11 @@
     (make-color r g b)))
 
 (define (make-process-color id)
-  (list (list'fg (vector-ref process-colors (modulo (make-string-hash id)
-                                                    (vector-length process-colors))))))
+  (if (eq? id 'system)
+      `((fg ,(make-gray 0.75)))
+      `((fg ,(vector-ref process-colors
+                         (modulo (make-string-hash id)
+                                 (vector-length process-colors)))))))
 
 (define (make-string-hash s)
   (define basis 2166136261)
