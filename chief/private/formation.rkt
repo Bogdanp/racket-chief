@@ -5,7 +5,7 @@
          racket/match
          racket/set
          racket/system
-         "ansi.rkt"
+         "ansi-color.rkt"
          "procfile.rkt")
 
 (provide
@@ -114,7 +114,10 @@
   control)
 
 (define process-colors
-  #(red green yellow blue magenta cyan))
+  (for*/vector ([r (in-range 1 6)]
+                [g (in-range 1 6)]
+                [b (in-range 1 6)])
+    (make-color r g b)))
 
 (define (make-process-color id)
   (list (list'fg (vector-ref process-colors (modulo (make-string-hash id)
