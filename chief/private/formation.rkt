@@ -5,8 +5,8 @@
          racket/match
          racket/set
          racket/system
-         "ansi-color.rkt"
-         "procfile.rkt")
+         "procfile.rkt"
+         "term.rkt")
 
 (provide
  start-formation)
