@@ -3,6 +3,8 @@
 Chief is a port of [foreman] to Racket.  It runs sets of processes
 together based on a `Procfile`.
 
+![screenshot](media/screenshot.png)
+
 ## Getting Started
 
 You can install `chief` from the package server by running:
