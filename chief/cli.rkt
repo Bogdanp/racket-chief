@@ -29,17 +29,18 @@
   (exit 1))
 
 (define (read-envfile path)
-  (with-handlers ([exn:fail:filesystem?
-                   (lambda (e)
-                     (cond
-                       [(string=? ".env" path) (hash)]
-                       [else (exit-with-errors! @~a{error: failed to open '@path'})]))]
+  (parameterize ([port-count-lines-enabled #t])
+    (with-handlers ([exn:fail:filesystem?
+                     (lambda (e)
+                       (cond
+                         [(string=? ".env" path) (hash)]
+                         [else (exit-with-errors! @~a{error: failed to open '@path'})]))]
 
-                  [exn:fail?
-                   (lambda (e)
-                     (exit-with-errors! @~a{error: '@path' is not valid}
-                                        @~a{  @(exn-message e)}))])
-    (call-with-input-file path read-env)))
+                    [exn:fail?
+                     (lambda (e)
+                       (exit-with-errors! @~a{error: '@path' is not valid}
+                                          @~a{  @(exn-message e)}))])
+      (call-with-input-file path read-env))))
 
 (define (read-envfiles)
   (define vars
@@ -55,15 +56,16 @@
       (environment-variables-set! env name value))))
 
 (define (read-procfile)
-  (with-handlers ([exn:fail:filesystem?
-                   (lambda (e)
-                     (exit-with-errors! @~a{error: failed to open '@(current-procfile-path)'}))]
+  (parameterize ([port-count-lines-enabled #t])
+    (with-handlers ([exn:fail:filesystem?
+                     (lambda (e)
+                       (exit-with-errors! @~a{error: failed to open '@(current-procfile-path)'}))]
 
-                  [exn:fail?
-                   (lambda (e)
-                     (exit-with-errors! @~a{error: '@(current-procfile-path)' is not valid}
-                                        @~a{  @(exn-message e)}))])
-    (call-with-input-file (current-procfile-path) read-procdefs)))
+                    [exn:fail?
+                     (lambda (e)
+                       (exit-with-errors! @~a{error: '@(current-procfile-path)' is not valid}
+                                          @~a{  @(exn-message e)}))])
+      (call-with-input-file (current-procfile-path) read-procdefs))))
 
 
 (define formation-re
