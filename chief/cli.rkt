@@ -1,10 +1,13 @@
 #lang at-exp racket/base
 
-(require racket/cmdline
+(require (for-syntax racket/base
+                     syntax/parse)
+         racket/cmdline
          racket/format
          racket/hash
          racket/match
          racket/string
+         racket/system
          raco/command-name
          "private/env.rkt"
          "private/formation.rkt"
@@ -72,7 +75,6 @@
                                           @~a{  @(exn-message e)}))])
       (call-with-input-file (current-procfile-path) read-procdefs))))
 
-
 (define formation-re
   #rx"^([^=]+)=(0|[1-9][0-9]*)$")
 
@@ -81,43 +83,35 @@
     [#f (exit-with-errors! @~a{error: invalid formation '@spec'})]
     [(list _ proc num) (values proc (string->number num))]))
 
-(define (parse-procfile-args)
-  (command-line
-   #:program (current-program-name)
-   #:once-each
-   [("-f" "--procfile")
-    procfile
-    "Specify an alternate Procfile to load (default: Procfile)"
-    (current-procfile-path procfile)]
-   #:multi
-   [("-e" "--env")
-    envfile
-    "Specify one or more env files to load (default: .env)"
-    (current-envfile-paths (cons envfile (current-envfile-paths)))]
-   [("-m" "--formation")
-    spec
-    "Specify how many processes of one type to run.  (example: 'web=2')"
-    (let-values ([(process num) (read-formation spec)])
-      (current-formation (hash-set (current-formation) process num)))]
-   #:args processes
-   (define procdefs (read-procfile))
-   (define known-processes
-     (map procdef-name procdefs))
-
-   (for ([name (in-list processes)])
-     (unless (member name known-processes)
-       (exit-with-errors! @~a{error: invalid process '@name'})))
-
-   (values (read-envfiles)
-           procdefs
-           (if (null? processes)
-               known-processes
-               processes)
-           (current-formation))))
+(define-syntax (chief-command-line stx)
+  (syntax-parse stx
+    [(_ (~alt
+         (~optional (~seq #:once-each oe:expr ...+) #:defaults ([(oe 1) null]))
+         (~optional (~seq #:multi me:expr ...+)     #:defaults ([(me 1) null]))
+         (~optional (~seq #:args ae:expr)           #:defaults ([ae #'args]))) ...
+        body:expr ...+)
+     #'(command-line
+        #:program (current-program-name)
+        #:once-each
+        [("-f" "--procfile")
+         path
+         "Specify an alternate Procfile <path> to load (default: Procfile)"
+         (current-procfile-path path)]
+        oe ...
+        #:multi
+        [("-e" "--env")
+         path
+         "Specify one or more env file <path>s to load (default: .env)"
+         (current-envfile-paths (cons path (current-envfile-paths)))]
+        me ...
+        #:args ae
+        body ...)]))
 
 (define (handle-check)
-  (define-values (env procdefs processes formation)
-    (parse-procfile-args))
+  (define-values (env procdefs)
+    (chief-command-line
+     (values (read-envfiles)
+             (read-procfile))))
 
   (display "valid procfile detected (")
   (display (string-join (map procdef-name procdefs) ", "))
@@ -130,16 +124,39 @@
    "available commands:"
    "  check    validate a Procfile"
    "  help     print this message and exit"
+   "  run      run a command using your application's environment"
    "  start    start the application (or a specific process)"))
 
-(define (handle-start)
-  (define-values (env procdefs processes formation)
-    (parse-procfile-args))
+(define (handle-run)
+  (chief-command-line
+   #:args (command . command-args)
+   (parameterize ([current-environment-variables (read-envfiles)])
+     (exit (system/exit-code (string-join (cons command command-args) " "))))))
 
-  (start-formation #:env env
-                   #:defs procdefs
-                   #:procs processes
-                   #:formation formation))
+(define (handle-start)
+  (chief-command-line
+   #:multi
+   [("-m" "--formation")
+    spec
+    "Specify how many processes of one type to run. (example: 'web=2')"
+    (let-values ([(process num) (read-formation spec)])
+      (current-formation (hash-set (current-formation) process num)))]
+   #:args processes
+   (define env (read-envfiles))
+   (define procdefs (read-procfile))
+   (define known-processes
+     (map procdef-name procdefs))
+
+   (for ([name (in-list processes)])
+     (unless (member name known-processes)
+       (exit-with-errors! @~a{error: invalid process '@name'})))
+
+   (start-formation #:env env
+                    #:defs procdefs
+                    #:procs (if (null? processes)
+                                known-processes
+                                processes)
+                    #:formation (current-formation))))
 
 (define ((handle-unknown command))
   (exit-with-errors! @~a{error: unrecognized command '@command'}))
@@ -147,6 +164,7 @@
 (define all-commands
   (hasheq 'check handle-check
           'help  handle-help
+          'run   handle-run
           'start handle-start))
 
 (define-values (command handler args)

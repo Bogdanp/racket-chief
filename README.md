@@ -42,7 +42,7 @@ flag:
 
 ## Differences from `foreman`
 
-* The `export` and `run` commands are not supported.
+* The `export` command is not supported.
 * The `-e` flag can be passed multiple times.
 * The `-m` flag can be passed multiple times.
 
