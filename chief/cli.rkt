@@ -14,7 +14,7 @@
   (make-parameter (short-program+command-name)))
 
 (define current-envfile-paths
-  (make-parameter (list ".env")))
+  (make-parameter (list)))
 
 (define current-procfile-path
   (make-parameter "Procfile"))
@@ -28,12 +28,12 @@
       (displayln message)))
   (exit 1))
 
-(define (read-envfile path)
+(define (read-envfile path missing-ok?)
   (parameterize ([port-count-lines-enabled #t])
     (with-handlers ([exn:fail:filesystem?
                      (lambda (e)
                        (cond
-                         [(string=? ".env" path) (hash)]
+                         [missing-ok? (hash)]
                          [else (exit-with-errors! @~a{error: failed to open '@path'})]))]
 
                     [exn:fail?
@@ -43,10 +43,15 @@
       (call-with-input-file path read-env))))
 
 (define (read-envfiles)
+  (define-values (paths missing-ok?)
+    (if (null? (current-envfile-paths))
+        (values (list ".env") #t)
+        (values (current-envfile-paths) #f)))
+
   (define vars
     (for/fold ([env (hash)])
-              ([path (in-list (current-envfile-paths))])
-      (hash-union env (read-envfile path) #:combine (lambda (v1 v2) v2))))
+              ([path (in-list paths)])
+      (hash-union env (read-envfile path missing-ok?) #:combine (lambda (v1 v2) v2))))
 
   (define env
     (environment-variables-copy (current-environment-variables)))
