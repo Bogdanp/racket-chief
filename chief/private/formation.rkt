@@ -107,11 +107,18 @@
        (lambda _
          (emit 'message (format "process started with pid ~a" pid)))
        (lambda _
-         (let loop ()
-           (define line (read-line (sync (choice-evt stdout stderr))))
-           (unless (eof-object? line)
-             (emit 'message line)
-             (loop))))
+         (let loop ([ports (list stdout stderr)])
+           (define port (sync (apply choice-evt ports)))
+           (define line (read-line port))
+           (cond
+             [(eof-object? line)
+              (define ports* (remq port ports))
+              (unless (null? ports*)
+                (loop ports*))]
+
+             [else
+              (emit 'message line)
+              (loop ports)])))
        (lambda _
          (emit 'exit (control 'exit-code))))))
 
