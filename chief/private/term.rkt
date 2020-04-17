@@ -1,7 +1,6 @@
 #lang racket/base
 
 (require racket/contract
-         racket/function
          racket/match)
 
 (provide
