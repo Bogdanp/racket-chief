@@ -96,7 +96,8 @@
 
 (define (start-subprocess ch id command)
   (match-define (list stdout stdin pid stderr control)
-    (process command))
+    (parameterize ([subprocess-group-enabled #t])
+      (process command)))
 
   (define (emit event . args)
     (channel-put ch (list* event id (now) args)))
