@@ -63,7 +63,7 @@
 
   (define (event-loop)
     (match (sync/enable-break ch)
-      [(list 'exit id ts code)
+      [`(exit ,id ,ts ,code)
        (log (format "process exited with code ~a" (~c code)) id ts)
        (set-remove! running-processes id)
 
@@ -71,7 +71,7 @@
          (log (format "stopping all processes because '~a' died" id))
          (stop-all))]
 
-      [(list 'message id ts message)
+      [`(message ,id ,ts ,message)
        (log message id ts)])
 
     (unless (set-empty? running-processes)
@@ -79,7 +79,7 @@
 
   (let loop ()
     (with-handlers ([exn:break?
-                     (lambda _
+                     (lambda (_)
                        (define signal
                          (cond
                            [stopping?
@@ -95,7 +95,7 @@
       (event-loop))))
 
 (define (start-subprocess ch id command)
-  (match-define (list stdout stdin pid stderr control)
+  (match-define (list stdout _stdin pid stderr control)
     (parameterize ([subprocess-group-enabled #t])
       (process command)))
 
@@ -103,11 +103,11 @@
     (channel-put ch (list* event id (now) args)))
 
   (thread
-   (lambda _
+   (lambda ()
      (dynamic-wind
-       (lambda _
+       (lambda ()
          (emit 'message (format "process started with pid ~a" pid)))
-       (lambda _
+       (lambda ()
          (let loop ([ports (list stdout stderr)])
            (define port (sync (apply choice-evt ports)))
            (define line (read-line port))
@@ -119,8 +119,11 @@
 
              [else
               (emit 'message line)
-              (loop ports)])))
-       (lambda _
+              (loop ports)]))
+
+         (emit 'message "waiting for process completion")
+         (control 'wait))
+       (lambda ()
          (emit 'exit (control 'exit-code))))))
 
   control)
