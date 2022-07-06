@@ -40,6 +40,14 @@ flag:
 
     $ raco chief start -m web=1 -m redis=3
 
+Every process type is assigned a range of 100 ports, beginning with
+port `5000`, and every instance of a process type gets assigned one of
+those ports via the `PORT` environment variable.  In the example
+above, the `assets` proces would have its `PORT` environment variable
+set to `5000`, the `web` process would have its `PORT` set to `5100`,
+and the `redis` processes would have their `PORT`s set to `5200`,
+`5201` and `5202`, respectively.
+
 ## Differences from `foreman`
 
 * The `export` command is not supported.
